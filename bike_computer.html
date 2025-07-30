@@ -123,24 +123,14 @@
             margin-top: 0.5rem;
         }
 
-        /* Settings Section */
+        /* Settings Section (always visible) */
         .settings-section {
             background-color: #f9fafb;
             padding: 1.5rem;
             border-radius: 0.75rem;
             border: 1px solid #e5e7eb;
             margin-top: 1.5rem;
-            transition: all 0.3s ease-in-out;
-            max-height: 500px; /* Arbitrary max-height for transition */
-            overflow: hidden; /* Hide overflow when collapsed */
-        }
-        .settings-section.hidden {
-            max-height: 0;
-            padding-top: 0;
-            padding-bottom: 0;
-            margin-top: 0;
-            opacity: 0;
-            pointer-events: none; /* Disable interaction when hidden */
+            /* No max-height or overflow: hidden for always visible */
         }
     </style>
 </head>
@@ -173,15 +163,14 @@
                 <span id="loadingSpinner" class="loading-spinner hidden"></span>
             </button>
             <button id="stopButton" onclick="stopRecording()" disabled>Stop Recording</button>
-            <button id="settingsButton" onclick="toggleSettings()">Settings</button>
         </div>
 
         <div class="status-message" id="statusMessage">
             Click "Start Recording" to begin. Please allow location access.
         </div>
 
-        <!-- Collapsible Settings Section -->
-        <div class="settings-section hidden" id="settingsSection">
+        <!-- Settings Section (always visible) -->
+        <div class="settings-section" id="settingsSection">
             <h2 class="text-xl font-bold mb-4 text-gray-800">Calculation Parameters</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
@@ -256,7 +245,6 @@
         // DOM elements
         const startButton = document.getElementById('startButton');
         const stopButton = document.getElementById('stopButton');
-        const settingsButton = document.getElementById('settingsButton');
         const loadingSpinner = document.getElementById('loadingSpinner');
         const bikeComputerDisplay = document.getElementById('bikeComputerDisplay');
         const displaySpeed = document.getElementById('displaySpeed');
@@ -265,18 +253,10 @@
         const displayGPS = document.getElementById('displayGPS');
         const displayTime = document.getElementById('displayTime');
         const statusMessageDiv = document.getElementById('statusMessage');
-        const settingsSection = document.getElementById('settingsSection');
+        const settingsSection = document.getElementById('settingsSection'); // Still need reference for consistency
         const samplingIntervalInput = document.getElementById('samplingInterval');
 
-        // Function to toggle settings section visibility
-        function toggleSettings() {
-            settingsSection.classList.toggle('hidden');
-            if (!settingsSection.classList.contains('hidden')) {
-                settingsButton.textContent = 'Hide Settings';
-            } else {
-                settingsButton.textContent = 'Settings';
-            }
-        }
+        // Removed toggleSettings function as settings are always visible
 
         // Function to convert degrees to radians
         function toRadians(deg) {
@@ -537,7 +517,7 @@
             displayGPS.textContent = 'Lat: N/A, Lon: N/A';
             displayTime.textContent = '00:00:00';
 
-            statusMessageDiv.textContent = 'Starting recording...\n\n';
+            statusMessageDiv.textContent = 'Click "Start Recording" to begin. Please allow location access.'; // Initial message
             startButton.disabled = true;
             stopButton.disabled = false;
             loadingSpinner.classList.remove('hidden');
