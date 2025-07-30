@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cycling Power Recorder & Calculator (Live GPS)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 2rem;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 2.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 700px;
+        }
+        input[type="number"],
+        input[type="text"] {
+            padding: 0.75rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.5rem;
+            width: 100%;
+            box-sizing: border-box;
+            margin-top: 0.25rem;
+            margin-bottom: 1rem;
+        }
+        button {
+            background-color: #3b82f6;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 0.5rem; /* Space between buttons */
+        }
+        button:hover {
+            background-color: #2563eb;
+        }
+        button:disabled {
+            background-color: #9ca3af;
+            cursor: not-allowed;
+        }
+        .output-box {
+            background-color: #e0f2fe;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            margin-top: 1.5rem;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 0.9rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .warning {
+            color: #dc2626;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+        }
+        .success {
+            color: #16a34a;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+        }
+        .button-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container">
+        <h1 class="text-3xl font-bold text-center mb-6 text-gray-800">Cycling Power Recorder (Live GPS)</h1>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+                <label for="bodyWeight" class="block text-gray-700 text-sm font-medium">Body Weight (kg):</label>
+                <input type="number" id="bodyWeight" value="75" min="1">
+            </div>
+            <div>
+                <label for="bikeWeight" class="block text-gray-700 text-sm font-medium">Bike Weight (kg):</label>
+                <input type="number" id="bikeWeight" value="9" min="1">
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+                <label for="cda" class="block text-gray-700 text-sm font-medium">CdA (m² - Aerodynamic Drag Coefficient * Frontal Area):</label>
+                <input type="number" id="cda" value="0.3" step="0.01" min="0.1">
+                <p class="text-gray-500 text-xs mt-1">Typical values: 0.25 (aero) - 0.45 (upright).</p>
+            </div>
+            <div>
+                <label for="cr" class="block text-gray-700 text-sm font-medium">Cr (Rolling Resistance Coefficient):</label>
+                <input type="number" id="cr" value="0.004" step="0.0001" min="0.001">
+                <p class="text-gray-500 text-xs mt-1">Typical values: 0.003 (smooth) - 0.005 (rough).</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+                <label for="airDensity" class="block text-gray-700 text-sm font-medium">Air Density (kg/m³):</label>
+                <input type="number" id="airDensity" value="1.225" step="0.001" min="0.5">
+                <p class="text-gray-500 text-xs mt-1">Standard sea-level: 1.225. Lower at higher altitudes.</p>
+            </div>
+            <div>
+                <label for="drivetrainEfficiency" class="block text-gray-700 text-sm font-medium">Drivetrain Efficiency (%):</label>
+                <input type="number" id="drivetrainEfficiency" value="97" step="1" min="70" max="100">
+                <p class="text-gray-500 text-xs mt-1">Percentage of power reaching the wheel (e.g., 97 for 97%).</p>
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <label for="openWeatherApiKey" class="block text-gray-700 text-sm font-medium">OpenWeatherMap API Key (Optional for Wind Data):</label>
+            <input type="text" id="openWeatherApiKey" placeholder="Leave empty to exclude wind data">
+            <p class="text-gray-500 text-xs mt-1">If provided, fetches ambient wind data. Get one from <a href="https://openweathermap.org/api" target="_blank" class="text-blue-600 hover:underline">openweathermap.org/api</a> (free tier available, but requires key).</p>
+            <p class="warning">**NOTE:** API keys can take up to 2 hours to activate after registration.</p>
+        </div>
+
+        <div class="button-group">
+            <button id="startButton" onclick="startRecording()">
+                Start Recording
+                <span id="loadingSpinner" class="loading-spinner hidden"></span>
+            </button>
+            <button id="stopButton" onclick="stopRecording()" disabled>Stop Recording</button>
+        </div>
+
+        <div class="output-box" id="output">
+            Click "Start Recording" to begin. Please allow location access.
+        </div>
+    </div>
+
+    <script>
+        // Constants
+        const G = 9.8067; // Acceleration due to gravity (m/s^2)
+        const INTERVAL_SECONDS = 10; // Calculation interval for power
+        const OPEN_METEO_ELEVATION_API_URL = 'https://api.open-meteo.com/v1/elevation';
+        const OPEN_WEATHER_MAP_CURRENT_WEATHER_API_URL = 'https://api.openweathermap.org/data/2.5/weather';
+        const PROCESSING_INTERVAL_MS = 2000; // How often to check for new 10-second intervals (e.g., every 2 seconds)
+
+        let recordedData = []; // Stores calculated power metrics for each interval
+        let isRecording = false;
+        let watchId = null; // To store the watchPosition ID
+        let processingIntervalId = null; // To store the setInterval ID for processing
+        let liveDataPoints = []; // Stores incoming GPS data points
+        let lastProcessedTime = 0; // Timestamp of the last point included in a processed interval
+
+        // DOM elements
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const outputDiv = document.getElementById('output');
+
+        // Function to convert degrees to radians
+        function toRadians(deg) {
+            return deg * (Math.PI / 180);
+        }
+
+        // Function to calculate distance between two GPS points (Haversine formula)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371000; // Radius of Earth in meters
+            const dLat = toRadians(lat2 - lat1);
+            const dLon = toRadians(lon2 - lon1);
+            const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c; // Distance in meters
+        }
+
+        // Function to calculate bearing between two GPS points (direction of travel)
+        function calculateBearing(lat1, lon1, lat2, lon2) {
+            lat1 = toRadians(lat1);
+            lon1 = toRadians(lon1);
+            lat2 = toRadians(lat2);
+            lon2 = toRadians(lon2);
+
+            const y = Math.sin(lon2 - lon1) * Math.cos(lat2);
+            const x = Math.cos(lat1) * Math.sin(lat2) -
+                      Math.sin(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1);
+            let bearing = Math.atan2(y, x);
+            bearing = (bearing * 180 / Math.PI + 360) % 360; // Convert to degrees and normalize to 0-360
+            return bearing;
+        }
+
+        // Exponential backoff for API calls
+        async function fetchWithRetry(url, options, retries = 3, delay = 1000) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        if (response.status === 429 && i < retries - 1) { // Too Many Requests
+                            console.warn(`Rate limit hit, retrying in ${delay}ms...`);
+                            await new Promise(res => setTimeout(res, delay));
+                            delay *= 2; // Exponential backoff
+                            continue;
+                        }
+                        throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+                    }
+                    return await response.json();
+                } catch (error) {
+                    if (i < retries - 1) {
+                        console.warn(`Fetch error, retrying in ${delay}ms: ${error.message}`);
+                        await new Promise(res => setTimeout(res, delay));
+                        delay *= 2;
+                    } else {
+                        throw error;
+                    }
+                }
+            }
+        }
+
+        // Function to process a single 10-second interval
+        async function processInterval(intervalPoints, ambientWindData, params) {
+            const { bodyWeight, bikeWeight, cda, cr, airDensity, drivetrainEfficiency } = params;
+            const totalMass = bodyWeight + bikeWeight;
+
+            const intervalStartTime = intervalPoints[0].time;
+            const intervalEndTime = intervalPoints[intervalPoints.length - 1].time;
+            const actualIntervalDuration = (intervalEndTime - intervalStartTime) / 1000; // Convert ms to seconds
+
+            if (actualIntervalDuration <= 0 || intervalPoints.length < 2) {
+                return null; // Not a valid interval or duration too short
+            }
+
+            // Calculate total distance and average speed for the interval
+            let totalIntervalDistance = 0;
+            for (let j = 0; j < intervalPoints.length - 1; j++) {
+                totalIntervalDistance += calculateDistance(intervalPoints[j].lat, intervalPoints[j].lon, intervalPoints[j+1].lat, intervalPoints[j+1].lon);
+            }
+            const avgGroundSpeed = totalIntervalDistance / actualIntervalDuration; // m/s
+
+            // Calculate initial and final speeds for acceleration
+            let initialSpeedForAccel = 0;
+            let finalSpeedForAccel = 0;
+
+            // Initial speed for acceleration: speed of the first segment in the interval
+            if (intervalPoints.length > 1 && (intervalPoints[1].time - intervalPoints[0].time) > 0) {
+                initialSpeedForAccel = calculateDistance(intervalPoints[0].lat, intervalPoints[0].lon, intervalPoints[1].lat, intervalPoints[1].lon) / ((intervalPoints[1].time - intervalPoints[0].time) / 1000);
+            } else {
+                initialSpeedForAccel = 0; // If only one point or no time diff, assume 0
+            }
+            
+            // Final speed for acceleration: speed of the last segment in the interval
+            if (intervalPoints.length > 1 && (intervalPoints[intervalPoints.length - 1].time - intervalPoints[intervalPoints.length - 2].time) > 0) {
+                finalSpeedForAccel = calculateDistance(intervalPoints[intervalPoints.length - 2].lat, intervalPoints[intervalPoints.length - 2].lon, intervalPoints[intervalPoints.length - 1].lat, intervalPoints[intervalPoints.length - 1].lon) / ((intervalPoints[intervalPoints.length - 1].time - intervalPoints[intervalPoints.length - 2].time) / 1000);
+            } else {
+                finalSpeedForAccel = initialSpeedForAccel; // If only one point or no time diff, use initial speed
+            }
+
+
+            // Calculate average bearing (direction of travel) for the interval
+            const avgBearing = calculateBearing(intervalPoints[0].lat, intervalPoints[0].lon, intervalPoints[intervalPoints.length - 1].lat, intervalPoints[intervalPoints.length - 1].lon);
+            const avgBearingRad = toRadians(avgBearing);
+
+            // Calculate change in elevation for the interval
+            const deltaAltitude = intervalPoints[intervalPoints.length - 1].alt - intervalPoints[0].alt;
+
+            // --- Wind Calculation (Apparent Wind) ---
+            let apparentWindSpeed = avgGroundSpeed; // Default to cyclist's speed if no ambient wind
+            let ambientWindSpeedMps = 0;
+            let ambientWindDirectionDeg = 0;
+            let windUsedMessage = "No ambient wind data (API key not provided).";
+
+            if (ambientWindData.isUsed) {
+                ambientWindSpeedMps = ambientWindData.speed;
+                ambientWindDirectionDeg = ambientWindData.deg;
+                windUsedMessage = `Ambient Wind: ${ambientWindData.speed.toFixed(1)} m/s (${(ambientWindData.speed * 3.6).toFixed(1)} km/h) from ${ambientWindData.deg.toFixed(1)}°`;
+
+                const ambientWindDirectionRad = toRadians((ambientWindData.deg + 180) % 360); // Convert to direction wind is blowing TO
+                const windX = ambientWindData.speed * Math.sin(ambientWindDirectionRad);
+                const windY = ambientWindData.speed * Math.cos(ambientWindDirectionRad);
+
+                const cyclistVx = avgGroundSpeed * Math.sin(avgBearingRad);
+                const cyclistVy = avgGroundSpeed * Math.cos(avgBearingRad);
+
+                const apparentWindVx = windX - cyclistVx;
+                const apparentWindVy = windY - cyclistVy;
+
+                apparentWindSpeed = Math.sqrt(Math.pow(apparentWindVx, 2) + Math.pow(apparentWindVy, 2));
+            } else {
+                apparentWindSpeed = avgGroundSpeed;
+            }
+
+            // --- Power Calculations (Watts) ---
+            const powerAero = 0.5 * airDensity * cda * Math.pow(apparentWindSpeed, 3);
+            const powerRolling = cr * totalMass * G * avgGroundSpeed;
+            const powerGravity = (totalMass * G * deltaAltitude) / actualIntervalDuration;
+            const powerAcceleration = (0.5 * totalMass * (Math.pow(finalSpeedForAccel, 2) - Math.pow(initialSpeedForAccel, 2))) / actualIntervalDuration;
+
+            const totalPowerAtWheel = powerAero + powerRolling + powerGravity + powerAcceleration;
+            const totalPowerAtPedals = totalPowerAtWheel / drivetrainEfficiency;
+
+            return {
+                intervalStartMs: intervalStartTime, // Keep original timestamp for CSV
+                intervalEndMs: intervalEndTime,     // Keep original timestamp for CSV
+                intervalDurationS: actualIntervalDuration,
+                avgGroundSpeedMps: avgGroundSpeed,
+                avgGroundSpeedKmh: avgGroundSpeed * 3.6,
+                avgBearingDeg: avgBearing,
+                ambientWindSpeedMps: ambientWindSpeedMps,
+                ambientWindSpeedKmh: ambientWindSpeedMps * 3.6,
+                ambientWindDirectionDeg: ambientWindDirectionDeg,
+                apparentWindSpeedMps: apparentWindSpeed,
+                apparentWindSpeedKmh: apparentWindSpeed * 3.6,
+                deltaAltitudeM: deltaAltitude,
+                powerAeroW: powerAero,
+                powerRollingW: powerRolling,
+                powerGravityW: powerGravity,
+                powerAccelerationW: powerAcceleration,
+                totalPowerAtWheelW: totalPowerAtWheel,
+                totalPowerAtPedalsW: totalPowerAtPedals,
+                windUsedMessage: windUsedMessage
+            };
+        }
+
+        let ambientWindData = { speed: 0, deg: 0, isUsed: false }; // Stores fetched wind data, with flag
+
+        // GPS success callback
+        function gpsSuccess(position) {
+            const newPoint = {
+                lat: position.coords.latitude,
+                lon: position.coords.longitude,
+                time: position.timestamp // Milliseconds since epoch
+            };
+            liveDataPoints.push(newPoint);
+            // Optionally update UI with current GPS status
+            outputDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}\n`;
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        }
+
+        // GPS error callback
+        function gpsError(error) {
+            let errorMessage = "An unknown GPS error occurred.";
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    errorMessage = "Location access denied. Please enable GPS permissions for this site.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    errorMessage = "Location information is unavailable. Check your device's GPS signal.";
+                    break;
+                case error.TIMEOUT:
+                    errorMessage = "The request to get user location timed out.";
+                    break;
+            }
+            outputDiv.textContent = `GPS Error: ${errorMessage}\nRecording stopped.`;
+            stopRecording(); // Stop recording on GPS error
+        }
+
+        async function startRecording() {
+            if (isRecording) return; // Prevent multiple clicks
+
+            recordedData = []; // Clear previous data
+            liveDataPoints = []; // Clear live data points
+            lastProcessedTime = 0; // Reset last processed time
+            outputDiv.textContent = 'Starting recording...\n\n';
+            startButton.disabled = true;
+            stopButton.disabled = false;
+            loadingSpinner.classList.remove('hidden');
+            isRecording = true;
+
+            const bodyWeight = parseFloat(document.getElementById('bodyWeight').value);
+            const bikeWeight = parseFloat(document.getElementById('bikeWeight').value);
+            const cda = parseFloat(document.getElementById('cda').value);
+            const cr = parseFloat(document.getElementById('cr').value);
+            const airDensity = parseFloat(document.getElementById('airDensity').value);
+            const drivetrainEfficiency = parseFloat(document.getElementById('drivetrainEfficiency').value) / 100;
+            const openWeatherApiKey = document.getElementById('openWeatherApiKey').value.trim();
+
+            const params = { bodyWeight, bikeWeight, cda, cr, airDensity, drivetrainEfficiency };
+
+            // Input validation
+            if (isNaN(bodyWeight) || isNaN(bikeWeight) || isNaN(cda) || isNaN(cr) || isNaN(airDensity) || isNaN(drivetrainEfficiency)) {
+                outputDiv.textContent = 'Please enter valid numbers for all input fields.';
+                stopRecording();
+                return;
+            }
+            if (drivetrainEfficiency <= 0 || drivetrainEfficiency > 1) {
+                outputDiv.textContent = 'Drivetrain Efficiency must be between 1 and 100%.';
+                stopRecording();
+                return;
+            }
+
+            // Start GPS tracking
+            if (navigator.geolocation) {
+                outputDiv.textContent += 'Requesting GPS location. Please allow access...\n';
+                watchId = navigator.geolocation.watchPosition(
+                    gpsSuccess,
+                    gpsError,
+                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                );
+
+                // Wait for the first GPS point to arrive to get initial location for wind data
+                let initialGpsAttemptCount = 0;
+                const maxInitialGpsAttempts = 10; // Try for up to 10 * 500ms = 5 seconds
+                const initialGpsCheckInterval = setInterval(async () => {
+                    if (liveDataPoints.length > 0) {
+                        clearInterval(initialGpsCheckInterval);
+                        await fetchInitialWindData(params, openWeatherApiKey);
+                        loadingSpinner.classList.add('hidden'); // Hide spinner once initial fetches are done
+                        outputDiv.textContent = 'Recording live GPS data. Processing intervals...\n\n';
+                        startProcessingIntervals(params); // Start periodic processing
+                    } else if (initialGpsAttemptCount >= maxInitialGpsAttempts) {
+                        clearInterval(initialGpsCheckInterval);
+                        outputDiv.textContent = 'Could not get initial GPS location. Please ensure GPS is enabled and permissions are granted.';
+                        stopRecording();
+                    }
+                    initialGpsAttemptCount++;
+                }, 500); // Check every 500ms for initial GPS data
+
+            } else {
+                outputDiv.textContent = 'Geolocation is not supported by your browser.';
+                stopRecording();
+            }
+        }
+
+        async function fetchInitialWindData(params, openWeatherApiKey) {
+            // Fetch Wind Data (optional) once at the start using the first available GPS point
+            if (openWeatherApiKey && liveDataPoints.length > 0) {
+                outputDiv.textContent += 'Attempting to fetch ambient wind data from OpenWeatherMap...\n';
+                const firstPoint = liveDataPoints[0];
+                const weatherUrl = `${OPEN_WEATHER_MAP_CURRENT_WEATHER_API_URL}?lat=${firstPoint.lat}&lon=${firstPoint.lon}&appid=${openWeatherApiKey}&units=metric`;
+                try {
+                    const weatherResponse = await fetchWithRetry(weatherUrl);
+                    if (weatherResponse && weatherResponse.wind) {
+                        ambientWindData.speed = weatherResponse.wind.speed; // m/s
+                        ambientWindData.deg = weatherResponse.wind.deg; // degrees from North
+                        ambientWindData.isUsed = true;
+                        outputDiv.textContent += `Ambient Wind: ${ambientWindData.speed.toFixed(1)} m/s from ${ambientWindData.deg.toFixed(1)}° (Data used in calculation)\n\n`;
+                    } else {
+                        throw new Error('Invalid wind data response.');
+                    }
+                } catch (windError) {
+                    outputDiv.textContent += `Could not fetch wind data from OpenWeatherMap (${windError.message}). Proceeding without ambient wind data.\n\n`;
+                    ambientWindData.isUsed = false; // Ensure flag is false if fetch fails
+                }
+            } else {
+                outputDiv.textContent += 'OpenWeatherMap API Key not provided or no initial GPS data. Proceeding without ambient wind data.\n\n';
+                ambientWindData.isUsed = false;
+            }
+        }
+
+        function startProcessingIntervals(params) {
+            processingIntervalId = setInterval(async () => {
+                // Find all points that form a complete 10-second interval since lastProcessedTime
+                const relevantPoints = liveDataPoints.filter(p => p.time >= lastProcessedTime);
+
+                if (relevantPoints.length < 2) {
+                    // Not enough points yet for an interval
+                    return;
+                }
+
+                // Identify the start of the current potential interval
+                let intervalStartIndex = 0;
+                // Find the first point that is at least INTERVAL_SECONDS ahead of lastProcessedTime
+                for (let i = 0; i < relevantPoints.length; i++) {
+                    if ((relevantPoints[i].time - relevantPoints[0].time) / 1000 >= INTERVAL_SECONDS) {
+                        intervalStartIndex = i;
+                        break;
+                    }
+                }
+
+                if (intervalStartIndex === 0 && (relevantPoints[relevantPoints.length - 1].time - relevantPoints[0].time) / 1000 < INTERVAL_SECONDS) {
+                    // No complete interval formed yet
+                    return;
+                }
+
+                // If we have enough points for at least one full interval
+                while (true) {
+                    const currentIntervalStartPoint = relevantPoints[intervalStartIndex];
+                    const currentIntervalEndTime = currentIntervalStartPoint.time + (INTERVAL_SECONDS * 1000); // Target end time in ms
+
+                    // Find the last point that falls within this 10-second window
+                    let intervalEndIndex = -1;
+                    for (let i = intervalStartIndex; i < relevantPoints.length; i++) {
+                        if (relevantPoints[i].time <= currentIntervalEndTime) {
+                            intervalEndIndex = i;
+                        } else {
+                            break; // Points are sorted by time, so we can stop
+                        }
+                    }
+
+                    if (intervalEndIndex === -1 || intervalEndIndex === intervalStartIndex) {
+                        // Not enough points to form a meaningful interval, or only one point
+                        break;
+                    }
+
+                    const intervalPointsToProcess = relevantPoints.slice(intervalStartIndex, intervalEndIndex + 1);
+
+                    // Ensure the interval duration is actually close to INTERVAL_SECONDS
+                    const actualDuration = (intervalPointsToProcess[intervalPointsToProcess.length - 1].time - intervalPointsToProcess[0].time) / 1000;
+                    if (actualDuration < INTERVAL_SECONDS * 0.5) { // Require at least half the interval duration
+                        // Not enough time covered by these points, move to next potential start
+                        intervalStartIndex = intervalEndIndex; // Advance start to end of current small chunk
+                        continue;
+                    }
+
+
+                    // Fetch elevation for these specific points in the interval
+                    const elevationCoords = intervalPointsToProcess.map(p => `latitude=${p.lat}&longitude=${p.lon}`).join('&');
+                    const elevationUrl = `${OPEN_METEO_ELEVATION_API_URL}?${elevationCoords}`;
+                    try {
+                        const elevationResponse = await fetchWithRetry(elevationUrl);
+                        if (elevationResponse && Array.isArray(elevationResponse.elevation) && elevationResponse.elevation.length === intervalPointsToProcess.length) {
+                            intervalPointsToProcess.forEach((p, index) => {
+                                p.alt = elevationResponse.elevation[index];
+                            });
+                        } else {
+                             const errMsg = elevationResponse && elevationResponse.reason ? elevationResponse.reason : 'Unknown error or invalid response structure.';
+                             console.error(`Failed to fetch elevation for interval: ${errMsg}`);
+                             // If elevation fails, we can't calculate power for this interval.
+                             // Decide: skip this interval or use a placeholder altitude? For now, skip.
+                             intervalStartIndex = intervalEndIndex; // Move past this problematic interval
+                             continue;
+                        }
+                    } catch (error) {
+                        console.error(`Error fetching elevation for interval: ${error.message}`);
+                        intervalStartIndex = intervalEndIndex;
+                        continue;
+                    }
+
+                    const result = await processInterval(intervalPointsToProcess, ambientWindData, params);
+                    if (result) {
+                        recordedData.push(result);
+                        let currentOutput = outputDiv.textContent.split('\n\n'); // Keep previous output
+                        currentOutput.pop(); // Remove last status message
+                        currentOutput.push(`--- Interval ${result.intervalStartMs / 1000}s to ${result.intervalEndMs / 1000}s (Duration: ${result.intervalDurationS.toFixed(1)}s) ---`);
+                        currentOutput.push(`Avg Ground Speed: ${result.avgGroundSpeedKmh.toFixed(2)} km/h`);
+                        currentOutput.push(`Apparent Wind Speed: ${result.apparentWindSpeedKmh.toFixed(2)} km/h`);
+                        currentOutput.push(`Elevation Change: ${result.deltaAltitudeM.toFixed(2)} m`);
+                        currentOutput.push(`Total Average Power (at Pedals): ${result.totalPowerAtPedalsW.toFixed(2)} W`);
+                        currentOutput.push(`(${result.windUsedMessage})`);
+                        currentOutput.push(''); // Blank line
+                        outputDiv.textContent = currentOutput.join('\n\n');
+                        outputDiv.scrollTop = outputDiv.scrollHeight; // Scroll to bottom
+                    }
+
+                    // Update lastProcessedTime to the end of the current interval
+                    lastProcessedTime = intervalPointsToProcess[intervalPointsToProcess.length - 1].time;
+
+                    // Remove processed points from liveDataPoints to prevent reprocessing
+                    liveDataPoints = liveDataPoints.filter(p => p.time > lastProcessedTime);
+                    intervalStartIndex = 0; // Reset for next iteration of while loop on remaining relevantPoints
+                }
+            }, PROCESSING_INTERVAL_MS); // Check for new intervals every X milliseconds
+        }
+
+
+        function stopRecording() {
+            if (!isRecording) return; // Already stopped
+            isRecording = false;
+
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+            if (processingIntervalId !== null) {
+                clearInterval(processingIntervalId);
+                processingIntervalId = null;
+            }
+
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            loadingSpinner.classList.add('hidden'); // Ensure spinner is hidden
+
+            outputDiv.textContent += '\nRecording stopped. Generating CSV...';
+            downloadCSV();
+            outputDiv.textContent += '\nCSV downloaded successfully!';
+        }
+
+        function downloadCSV() {
+            if (recordedData.length === 0) {
+                outputDiv.textContent += '\nNo data recorded to download.';
+                return;
+            }
+
+            const headers = [
+                "Interval Start (ms)", "Interval End (ms)", "Interval Duration (s)",
+                "Avg Ground Speed (m/s)", "Avg Ground Speed (km/h)",
+                "Avg Bearing (deg)",
+                "Ambient Wind Speed (m/s)", "Ambient Wind Speed (km/h)", "Ambient Wind Direction (deg)",
+                "Apparent Wind Speed (m/s)", "Apparent Wind Speed (km/h)",
+                "Elevation Change (m)",
+                "Power (Aerodynamic) (W)", "Power (Rolling) (W)", "Power (Gravity) (W)", "Power (Acceleration) (W)",
+                "Total Power (at Wheel) (W)", "Total Power (at Pedals) (W)",
+                "Wind Data Source"
+            ];
+
+            const csvRows = [];
+            csvRows.push(headers.join(',')); // Add headers
+
+            recordedData.forEach(row => {
+                const values = [
+                    row.intervalStartMs, row.intervalEndMs, row.intervalDurationS.toFixed(1),
+                    row.avgGroundSpeedMps.toFixed(2), row.avgGroundSpeedKmh.toFixed(2),
+                    row.avgBearingDeg.toFixed(1),
+                    row.ambientWindSpeedMps.toFixed(2), row.ambientWindSpeedKmh.toFixed(2), row.ambientWindDirectionDeg.toFixed(1),
+                    row.apparentWindSpeedMps.toFixed(2), row.apparentWindSpeedKmh.toFixed(2),
+                    row.deltaAltitudeM.toFixed(2),
+                    row.powerAeroW.toFixed(2), row.powerRollingW.toFixed(2), row.powerGravityW.toFixed(2), row.powerAccelerationW.toFixed(2),
+                    row.totalPowerAtWheelW.toFixed(2), row.totalPowerAtPedalsW.toFixed(2),
+                    `"${row.windUsedMessage.replace(/"/g, '""')}"`
+                ];
+                csvRows.push(values.join(','));
+            });
+
+            const csvString = csvRows.join('\n');
+            const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute('download', 'cycling_power_data.csv');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
