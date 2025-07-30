@@ -221,6 +221,12 @@
             </div>
 
             <div class="mb-4">
+                <label for="samplingInterval" class="block text-gray-700 text-sm font-medium">Sampling Interval (seconds):</label>
+                <input type="number" id="samplingInterval" value="60" min="15" step="1">
+                <p class="text-gray-500 text-xs mt-1">How often to calculate and record data. Higher values reduce API calls.</p>
+            </div>
+
+            <div class="mb-4">
                 <label for="openWeatherApiKey" class="block text-gray-700 text-sm font-medium">OpenWeatherMap API Key (Optional for Wind Data):</label>
                 <input type="text" id="openWeatherApiKey" placeholder="Leave empty to exclude wind data">
                 <p class="text-gray-500 text-xs mt-1">If provided, fetches ambient wind data. Get one from <a href="https://openweathermap.org/api" target="_blank" class="text-blue-600 hover:underline">openweathermap.org/api</a> (free tier available, but requires key).</p>
@@ -232,10 +238,10 @@
     <script>
         // Constants
         const G = 9.8067; // Acceleration due to gravity (m/s^2)
-        const INTERVAL_SECONDS = 60; // Changed to 60 seconds (1 minute) for API rate limit mitigation
+        // INTERVAL_SECONDS will now be read from the input field
         const OPEN_METEO_ELEVATION_API_URL = 'https://api.open-meteo.com/v1/elevation';
         const OPEN_WEATHER_MAP_CURRENT_WEATHER_API_URL = 'https://api.openweathermap.org/data/2.5/weather';
-        const PROCESSING_INTERVAL_MS = 2000; // How often to check for new 60-second intervals (e.g., every 2 seconds)
+        const PROCESSING_INTERVAL_MS = 2000; // How often to check for new intervals
         const MIN_SPEED_THRESHOLD_MPS = 0.5; // Minimum speed (m/s) to consider as moving and calculate power
 
         let recordedData = []; // Stores calculated power metrics for each interval
@@ -245,6 +251,7 @@
         let liveDataPoints = []; // Stores incoming GPS data points {lat, lon, time (ms)}
         let lastProcessedTime = 0; // Timestamp (ms) of the last point included in a processed interval
         let startTime = null; // To track the start time of the recording for elapsed time display
+        let currentSamplingInterval = 60; // Default value, will be updated from settings
 
         // DOM elements
         const startButton = document.getElementById('startButton');
@@ -259,6 +266,7 @@
         const displayTime = document.getElementById('displayTime');
         const statusMessageDiv = document.getElementById('statusMessage');
         const settingsSection = document.getElementById('settingsSection');
+        const samplingIntervalInput = document.getElementById('samplingInterval');
 
         // Function to toggle settings section visibility
         function toggleSettings() {
@@ -476,7 +484,7 @@
                 time: position.timestamp // Milliseconds since epoch
             };
             liveDataPoints.push(newPoint);
-            statusMessageDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}. Waiting for enough movement/time for an interval.`;
+            statusMessageDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}. Waiting for enough movement/time for a ${currentSamplingInterval}-second interval.`;
             
             // Update live time display
             if (startTime) {
@@ -508,6 +516,14 @@
 
         async function startRecording() {
             if (isRecording) return;
+
+            // Get sampling interval from input
+            const requestedInterval = parseFloat(samplingIntervalInput.value);
+            if (isNaN(requestedInterval) || requestedInterval < 15) { // Enforce minimum 15s for practical API usage
+                statusMessageDiv.textContent = 'Please enter a valid sampling interval (minimum 15 seconds).';
+                return;
+            }
+            currentSamplingInterval = requestedInterval;
 
             recordedData = [];
             liveDataPoints = [];
@@ -564,7 +580,7 @@
                         clearInterval(initialGpsCheckInterval);
                         await fetchInitialWindData(params, openWeatherApiKey);
                         loadingSpinner.classList.add('hidden');
-                        statusMessageDiv.textContent = 'Recording live GPS data. Processing intervals...\n';
+                        statusMessageDiv.textContent = `Recording live GPS data. Processing ${currentSamplingInterval}-second intervals...\n`;
                         startProcessingIntervals(params);
                     } else if (initialGpsAttemptCount >= maxInitialGpsAttempts) {
                         clearInterval(initialGpsCheckInterval);
@@ -613,14 +629,14 @@
                 const unprocessedPoints = liveDataPoints.filter(p => p.time > lastProcessedTime);
 
                 if (unprocessedPoints.length < 2) {
-                    statusMessageDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}. Waiting for more data or movement for next interval.`;
+                    statusMessageDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}. Waiting for more data or movement for next ${currentSamplingInterval}-second interval.`;
                     return;
                 }
 
                 let potentialIntervalStartIdx = 0;
                 while (potentialIntervalStartIdx < unprocessedPoints.length - 1) {
                     const currentIntervalStartTime = unprocessedPoints[potentialIntervalStartIdx].time;
-                    const targetIntervalEndTime = currentIntervalStartTime + (INTERVAL_SECONDS * 1000);
+                    const targetIntervalEndTime = currentIntervalStartTime + (currentSamplingInterval * 1000);
 
                     let intervalEndIdx = -1;
                     for (let i = potentialIntervalStartIdx + 1; i < unprocessedPoints.length; i++) {
@@ -634,7 +650,7 @@
                         const intervalPointsToProcess = unprocessedPoints.slice(potentialIntervalStartIdx, intervalEndIdx + 1);
                         const actualDuration = (intervalPointsToProcess[intervalPointsToProcess.length - 1].time - intervalPointsToProcess[0].time) / 1000;
 
-                        if (actualDuration >= INTERVAL_SECONDS * 0.5) { // Ensure sufficient duration for a meaningful interval
+                        if (actualDuration >= currentSamplingInterval * 0.5) { // Ensure sufficient duration for a meaningful interval
                             // --- Batch Elevation Fetch for this interval's points ---
                             const elevationParams = intervalPointsToProcess.map(p => `latitude=${p.lat}&longitude=${p.lon}`).join('&');
                             const elevationUrl = `${OPEN_METEO_ELEVATION_API_URL}?${elevationParams}`;
@@ -679,7 +695,7 @@
                         break; // No more complete intervals can be formed with current data
                     }
                 }
-                statusMessageDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}. Waiting for more data or movement for next interval.`;
+                statusMessageDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}. Waiting for more data or movement for next ${currentSamplingInterval}-second interval.`;
             }, PROCESSING_INTERVAL_MS);
         }
 
