@@ -252,6 +252,9 @@
                     intervalStartMs: intervalStartTime,
                     intervalEndMs: intervalEndTime,
                     intervalDurationS: actualIntervalDuration,
+                    startLat: intervalPoints[0].lat,
+                    startLon: intervalPoints[0].lon,
+                    startAlt: intervalPoints[0].alt,
                     avgGroundSpeedMps: avgGroundSpeed,
                     avgGroundSpeedKmh: avgGroundSpeed * 3.6,
                     avgBearingDeg: 0, // No meaningful bearing if stationary
@@ -337,6 +340,9 @@
                 intervalStartMs: intervalStartTime,
                 intervalEndMs: intervalEndTime,
                 intervalDurationS: actualIntervalDuration,
+                startLat: intervalPoints[0].lat, // Add start lat for display and CSV
+                startLon: intervalPoints[0].lon, // Add start lon for display and CSV
+                startAlt: intervalPoints[0].alt, // Add start alt for display and CSV
                 avgGroundSpeedMps: avgGroundSpeed,
                 avgGroundSpeedKmh: avgGroundSpeed * 3.6,
                 avgBearingDeg: avgBearing,
@@ -356,7 +362,7 @@
             };
         }
 
-        let ambientWindData = { speed: 0, deg: 0, isUsed: false, windUsedMessage: "No ambient wind data (API key not provided)." }; // Stores fetched wind data, with flag
+        let ambientWindData = { speed: 0, deg: 0, isUsed: false, windUsedMessage: "No ambient wind data (API key not provided)." };
 
         // GPS success callback
         function gpsSuccess(position) {
@@ -427,19 +433,18 @@
                 watchId = navigator.geolocation.watchPosition(
                     gpsSuccess,
                     gpsError,
-                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 } // Increased timeout for better initial fix
+                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
                 );
 
-                // Wait for the first GPS point to arrive to get initial location for wind data
                 let initialGpsAttemptCount = 0;
-                const maxInitialGpsAttempts = 20; // Try for up to 20 * 500ms = 10 seconds
+                const maxInitialGpsAttempts = 20;
                 const initialGpsCheckInterval = setInterval(async () => {
                     if (liveDataPoints.length > 0) {
                         clearInterval(initialGpsCheckInterval);
                         await fetchInitialWindData(params, openWeatherApiKey);
                         loadingSpinner.classList.add('hidden');
                         outputDiv.textContent = 'Recording live GPS data. Processing intervals...\n\n';
-                        startProcessingIntervals(params); // Start periodic processing
+                        startProcessingIntervals(params);
                     } else if (initialGpsAttemptCount >= maxInitialGpsAttempts) {
                         clearInterval(initialGpsCheckInterval);
                         outputDiv.textContent = 'Could not get initial GPS location after several attempts. Please ensure GPS is enabled and permissions are granted.';
@@ -484,7 +489,6 @@
 
         function startProcessingIntervals(params) {
             processingIntervalId = setInterval(async () => {
-                // Filter points that haven't been processed yet
                 const unprocessedPoints = liveDataPoints.filter(p => p.time > lastProcessedTime);
 
                 if (unprocessedPoints.length < 2) {
@@ -493,13 +497,11 @@
                     return;
                 }
 
-                // Try to find the start of a new, complete 10-second interval
                 let potentialIntervalStartIdx = 0;
                 while (potentialIntervalStartIdx < unprocessedPoints.length - 1) {
                     const currentIntervalStartTime = unprocessedPoints[potentialIntervalStartIdx].time;
                     const targetIntervalEndTime = currentIntervalStartTime + (INTERVAL_SECONDS * 1000);
 
-                    // Find the last point that falls within or just after the target 10-second window
                     let intervalEndIdx = -1;
                     for (let i = potentialIntervalStartIdx + 1; i < unprocessedPoints.length; i++) {
                         if (unprocessedPoints[i].time >= targetIntervalEndTime) {
@@ -509,14 +511,10 @@
                     }
 
                     if (intervalEndIdx !== -1) {
-                        // We found enough points to form an interval
                         const intervalPointsToProcess = unprocessedPoints.slice(potentialIntervalStartIdx, intervalEndIdx + 1);
                         const actualDuration = (intervalPointsToProcess[intervalPointsToProcess.length - 1].time - intervalPointsToProcess[0].time) / 1000;
 
-                        // Only process if the actual duration is close enough to INTERVAL_SECONDS
-                        // and there's enough distance covered to be considered "moving"
-                        if (actualDuration >= INTERVAL_SECONDS * 0.5) { // At least half the target duration
-                            // Fetch elevation for these specific points in the interval
+                        if (actualDuration >= INTERVAL_SECONDS * 0.5) {
                             const elevationCoords = intervalPointsToProcess.map(p => `latitude=${p.lat}&longitude=${p.lon}`).join('&');
                             const elevationUrl = `${OPEN_METEO_ELEVATION_API_URL}?${elevationCoords}`;
                             try {
@@ -530,10 +528,8 @@
                                      console.error(`Failed to fetch elevation for interval: ${errMsg}`);
                                      outputDiv.textContent += `\nError fetching elevation for an interval. Skipping this interval. (${errMsg})\n`;
                                      outputDiv.scrollTop = outputDiv.scrollHeight;
-                                     // If elevation fails, we can't calculate power for this interval.
-                                     // Move to the next potential start point.
                                      potentialIntervalStartIdx = intervalEndIdx;
-                                     continue; // Continue to next iteration of while loop
+                                     continue;
                                 }
                             } catch (error) {
                                 console.error(`Error fetching elevation for interval: ${error.message}`);
@@ -546,36 +542,32 @@
                             const result = await processInterval(intervalPointsToProcess, ambientWindData, params);
                             if (result) {
                                 recordedData.push(result);
-                                let currentOutput = outputDiv.textContent.split('\n\n');
-                                currentOutput.pop(); // Remove last status message
-                                currentOutput.push(`--- Interval ${result.intervalStartMs / 1000}s to ${result.intervalEndMs / 1000}s (Duration: ${result.intervalDurationS.toFixed(1)}s) ---`);
-                                currentOutput.push(`Avg Ground Speed: ${result.avgGroundSpeedKmh.toFixed(2)} km/h`);
-                                currentOutput.push(`Apparent Wind Speed: ${result.apparentWindSpeedKmh.toFixed(2)} km/h`);
-                                currentOutput.push(`Elevation Change: ${result.deltaAltitudeM.toFixed(2)} m`);
-                                currentOutput.push(`Total Average Power (at Pedals): ${result.totalPowerAtPedalsW.toFixed(2)} W`);
-                                currentOutput.push(`(${result.windUsedMessage})`);
-                                outputDiv.textContent = currentOutput.join('\n\n');
+                                // --- CONCISE OUTPUT FOR DISPLAY ---
+                                const displayMessage = `
+Interval Start: ${new Date(result.intervalStartMs).toLocaleTimeString()}
+GPS: ${result.startLat.toFixed(4)}, ${result.startLon.toFixed(4)}
+Elevation: ${result.startAlt.toFixed(1)} m
+Avg Speed: ${result.avgGroundSpeedKmh.toFixed(2)} km/h
+Avg Power: ${result.totalPowerAtPedalsW.toFixed(2)} W
+(${result.windUsedMessage})
+------------------------------
+`;
+                                outputDiv.textContent = displayMessage; // Overwrite with new status
                                 outputDiv.scrollTop = outputDiv.scrollHeight;
                             }
 
-                            // Update lastProcessedTime to the end of the current interval
                             lastProcessedTime = intervalPointsToProcess[intervalPointsToProcess.length - 1].time;
-
-                            // Remove processed points from liveDataPoints
                             liveDataPoints = liveDataPoints.filter(p => p.time > lastProcessedTime);
-                            potentialIntervalStartIdx = 0; // Reset to check from the beginning of remaining unprocessed points
+                            potentialIntervalStartIdx = 0;
                         } else {
-                            // Interval too short, move to the next point as a potential start
                             potentialIntervalStartIdx++;
                         }
                     } else {
-                        // No more complete intervals can be formed with current data
                         break;
                     }
                 }
             }, PROCESSING_INTERVAL_MS);
         }
-
 
         function stopRecording() {
             if (!isRecording) return;
@@ -607,6 +599,7 @@
 
             const headers = [
                 "Interval Start (ms)", "Interval End (ms)", "Interval Duration (s)",
+                "Start Lat", "Start Lon", "Start Alt (m)", // New headers for start point
                 "Avg Ground Speed (m/s)", "Avg Ground Speed (km/h)",
                 "Avg Bearing (deg)",
                 "Ambient Wind Speed (m/s)", "Ambient Wind Speed (km/h)", "Ambient Wind Direction (deg)",
@@ -623,6 +616,7 @@
             recordedData.forEach(row => {
                 const values = [
                     row.intervalStartMs, row.intervalEndMs, row.intervalDurationS.toFixed(1),
+                    row.startLat.toFixed(6), row.startLon.toFixed(6), row.startAlt.toFixed(1), // Add to CSV
                     row.avgGroundSpeedMps.toFixed(2), row.avgGroundSpeedKmh.toFixed(2),
                     row.avgBearingDeg.toFixed(1),
                     row.ambientWindSpeedMps.toFixed(2), row.ambientWindSpeedKmh.toFixed(2), row.ambientWindDirectionDeg.toFixed(1),
