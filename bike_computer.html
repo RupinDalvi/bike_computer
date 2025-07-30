@@ -151,13 +151,14 @@
         const OPEN_METEO_ELEVATION_API_URL = 'https://api.open-meteo.com/v1/elevation';
         const OPEN_WEATHER_MAP_CURRENT_WEATHER_API_URL = 'https://api.openweathermap.org/data/2.5/weather';
         const PROCESSING_INTERVAL_MS = 2000; // How often to check for new 10-second intervals (e.g., every 2 seconds)
+        const MIN_SPEED_THRESHOLD_MPS = 0.5; // Minimum speed (m/s) to consider as moving and calculate power
 
         let recordedData = []; // Stores calculated power metrics for each interval
         let isRecording = false;
         let watchId = null; // To store the watchPosition ID
         let processingIntervalId = null; // To store the setInterval ID for processing
-        let liveDataPoints = []; // Stores incoming GPS data points
-        let lastProcessedTime = 0; // Timestamp of the last point included in a processed interval
+        let liveDataPoints = []; // Stores incoming GPS data points {lat, lon, time (ms)}
+        let lastProcessedTime = 0; // Timestamp (ms) of the last point included in a processed interval
 
         // DOM elements
         const startButton = document.getElementById('startButton');
@@ -245,6 +246,32 @@
             }
             const avgGroundSpeed = totalIntervalDistance / actualIntervalDuration; // m/s
 
+            // If speed is below threshold, treat as stationary
+            if (avgGroundSpeed < MIN_SPEED_THRESHOLD_MPS) {
+                return {
+                    intervalStartMs: intervalStartTime,
+                    intervalEndMs: intervalEndTime,
+                    intervalDurationS: actualIntervalDuration,
+                    avgGroundSpeedMps: avgGroundSpeed,
+                    avgGroundSpeedKmh: avgGroundSpeed * 3.6,
+                    avgBearingDeg: 0, // No meaningful bearing if stationary
+                    ambientWindSpeedMps: ambientWindData.speed,
+                    ambientWindSpeedKmh: ambientWindData.speed * 3.6,
+                    ambientWindDirectionDeg: ambientWindData.deg,
+                    apparentWindSpeedMps: ambientWindData.isUsed ? ambientWindData.speed : 0, // If stationary, apparent wind is just ambient if used, else 0
+                    apparentWindSpeedKmh: ambientWindData.isUsed ? ambientWindData.speed * 3.6 : 0,
+                    deltaAltitudeM: 0, // Assume no elevation change if stationary
+                    powerAeroW: 0,
+                    powerRollingW: 0,
+                    powerGravityW: 0,
+                    powerAccelerationW: 0,
+                    totalPowerAtWheelW: 0,
+                    totalPowerAtPedalsW: 0,
+                    windUsedMessage: ambientWindData.isUsed ? ambientWindData.windUsedMessage : "Stationary / Very Slow (Power ~ 0W)"
+                };
+            }
+
+
             // Calculate initial and final speeds for acceleration
             let initialSpeedForAccel = 0;
             let finalSpeedForAccel = 0;
@@ -253,14 +280,14 @@
             if (intervalPoints.length > 1 && (intervalPoints[1].time - intervalPoints[0].time) > 0) {
                 initialSpeedForAccel = calculateDistance(intervalPoints[0].lat, intervalPoints[0].lon, intervalPoints[1].lat, intervalPoints[1].lon) / ((intervalPoints[1].time - intervalPoints[0].time) / 1000);
             } else {
-                initialSpeedForAccel = 0; // If only one point or no time diff, assume 0
+                initialSpeedForAccel = 0;
             }
             
             // Final speed for acceleration: speed of the last segment in the interval
             if (intervalPoints.length > 1 && (intervalPoints[intervalPoints.length - 1].time - intervalPoints[intervalPoints.length - 2].time) > 0) {
                 finalSpeedForAccel = calculateDistance(intervalPoints[intervalPoints.length - 2].lat, intervalPoints[intervalPoints.length - 2].lon, intervalPoints[intervalPoints.length - 1].lat, intervalPoints[intervalPoints.length - 1].lon) / ((intervalPoints[intervalPoints.length - 1].time - intervalPoints[intervalPoints.length - 2].time) / 1000);
             } else {
-                finalSpeedForAccel = initialSpeedForAccel; // If only one point or no time diff, use initial speed
+                finalSpeedForAccel = initialSpeedForAccel;
             }
 
 
@@ -307,8 +334,8 @@
             const totalPowerAtPedals = totalPowerAtWheel / drivetrainEfficiency;
 
             return {
-                intervalStartMs: intervalStartTime, // Keep original timestamp for CSV
-                intervalEndMs: intervalEndTime,     // Keep original timestamp for CSV
+                intervalStartMs: intervalStartTime,
+                intervalEndMs: intervalEndTime,
                 intervalDurationS: actualIntervalDuration,
                 avgGroundSpeedMps: avgGroundSpeed,
                 avgGroundSpeedKmh: avgGroundSpeed * 3.6,
@@ -329,7 +356,7 @@
             };
         }
 
-        let ambientWindData = { speed: 0, deg: 0, isUsed: false }; // Stores fetched wind data, with flag
+        let ambientWindData = { speed: 0, deg: 0, isUsed: false, windUsedMessage: "No ambient wind data (API key not provided)." }; // Stores fetched wind data, with flag
 
         // GPS success callback
         function gpsSuccess(position) {
@@ -339,8 +366,7 @@
                 time: position.timestamp // Milliseconds since epoch
             };
             liveDataPoints.push(newPoint);
-            // Optionally update UI with current GPS status
-            outputDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}\n`;
+            outputDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}. Waiting for enough movement/time for an interval.\n`;
             outputDiv.scrollTop = outputDiv.scrollHeight;
         }
 
@@ -359,15 +385,15 @@
                     break;
             }
             outputDiv.textContent = `GPS Error: ${errorMessage}\nRecording stopped.`;
-            stopRecording(); // Stop recording on GPS error
+            stopRecording();
         }
 
         async function startRecording() {
-            if (isRecording) return; // Prevent multiple clicks
+            if (isRecording) return;
 
-            recordedData = []; // Clear previous data
-            liveDataPoints = []; // Clear live data points
-            lastProcessedTime = 0; // Reset last processed time
+            recordedData = [];
+            liveDataPoints = [];
+            lastProcessedTime = 0;
             outputDiv.textContent = 'Starting recording...\n\n';
             startButton.disabled = true;
             stopButton.disabled = false;
@@ -384,7 +410,6 @@
 
             const params = { bodyWeight, bikeWeight, cda, cr, airDensity, drivetrainEfficiency };
 
-            // Input validation
             if (isNaN(bodyWeight) || isNaN(bikeWeight) || isNaN(cda) || isNaN(cr) || isNaN(airDensity) || isNaN(drivetrainEfficiency)) {
                 outputDiv.textContent = 'Please enter valid numbers for all input fields.';
                 stopRecording();
@@ -402,26 +427,26 @@
                 watchId = navigator.geolocation.watchPosition(
                     gpsSuccess,
                     gpsError,
-                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 } // Increased timeout for better initial fix
                 );
 
                 // Wait for the first GPS point to arrive to get initial location for wind data
                 let initialGpsAttemptCount = 0;
-                const maxInitialGpsAttempts = 10; // Try for up to 10 * 500ms = 5 seconds
+                const maxInitialGpsAttempts = 20; // Try for up to 20 * 500ms = 10 seconds
                 const initialGpsCheckInterval = setInterval(async () => {
                     if (liveDataPoints.length > 0) {
                         clearInterval(initialGpsCheckInterval);
                         await fetchInitialWindData(params, openWeatherApiKey);
-                        loadingSpinner.classList.add('hidden'); // Hide spinner once initial fetches are done
+                        loadingSpinner.classList.add('hidden');
                         outputDiv.textContent = 'Recording live GPS data. Processing intervals...\n\n';
                         startProcessingIntervals(params); // Start periodic processing
                     } else if (initialGpsAttemptCount >= maxInitialGpsAttempts) {
                         clearInterval(initialGpsCheckInterval);
-                        outputDiv.textContent = 'Could not get initial GPS location. Please ensure GPS is enabled and permissions are granted.';
+                        outputDiv.textContent = 'Could not get initial GPS location after several attempts. Please ensure GPS is enabled and permissions are granted.';
                         stopRecording();
                     }
                     initialGpsAttemptCount++;
-                }, 500); // Check every 500ms for initial GPS data
+                }, 500);
 
             } else {
                 outputDiv.textContent = 'Geolocation is not supported by your browser.';
@@ -430,7 +455,6 @@
         }
 
         async function fetchInitialWindData(params, openWeatherApiKey) {
-            // Fetch Wind Data (optional) once at the start using the first available GPS point
             if (openWeatherApiKey && liveDataPoints.length > 0) {
                 outputDiv.textContent += 'Attempting to fetch ambient wind data from OpenWeatherMap...\n';
                 const firstPoint = liveDataPoints[0];
@@ -438,131 +462,123 @@
                 try {
                     const weatherResponse = await fetchWithRetry(weatherUrl);
                     if (weatherResponse && weatherResponse.wind) {
-                        ambientWindData.speed = weatherResponse.wind.speed; // m/s
-                        ambientWindData.deg = weatherResponse.wind.deg; // degrees from North
+                        ambientWindData.speed = weatherResponse.wind.speed;
+                        ambientWindData.deg = weatherResponse.wind.deg;
                         ambientWindData.isUsed = true;
-                        outputDiv.textContent += `Ambient Wind: ${ambientWindData.speed.toFixed(1)} m/s from ${ambientWindData.deg.toFixed(1)}° (Data used in calculation)\n\n`;
+                        ambientWindData.windUsedMessage = `Ambient Wind: ${ambientWindData.speed.toFixed(1)} m/s (${(ambientWindData.speed * 3.6).toFixed(1)} km/h) from ${ambientWindData.deg.toFixed(1)}° (Data used in calculation)`;
+                        outputDiv.textContent += `${ambientWindData.windUsedMessage}\n\n`;
                     } else {
                         throw new Error('Invalid wind data response.');
                     }
                 } catch (windError) {
                     outputDiv.textContent += `Could not fetch wind data from OpenWeatherMap (${windError.message}). Proceeding without ambient wind data.\n\n`;
-                    ambientWindData.isUsed = false; // Ensure flag is false if fetch fails
+                    ambientWindData.isUsed = false;
+                    ambientWindData.windUsedMessage = "No ambient wind data (API key provided but fetch failed).";
                 }
             } else {
                 outputDiv.textContent += 'OpenWeatherMap API Key not provided or no initial GPS data. Proceeding without ambient wind data.\n\n';
                 ambientWindData.isUsed = false;
+                ambientWindData.windUsedMessage = "No ambient wind data (API key not provided).";
             }
         }
 
         function startProcessingIntervals(params) {
             processingIntervalId = setInterval(async () => {
-                // Find all points that form a complete 10-second interval since lastProcessedTime
-                const relevantPoints = liveDataPoints.filter(p => p.time >= lastProcessedTime);
+                // Filter points that haven't been processed yet
+                const unprocessedPoints = liveDataPoints.filter(p => p.time > lastProcessedTime);
 
-                if (relevantPoints.length < 2) {
-                    // Not enough points yet for an interval
+                if (unprocessedPoints.length < 2) {
+                    outputDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}. Waiting for more data or movement for next interval.\n`;
+                    outputDiv.scrollTop = outputDiv.scrollHeight;
                     return;
                 }
 
-                // Identify the start of the current potential interval
-                let intervalStartIndex = 0;
-                // Find the first point that is at least INTERVAL_SECONDS ahead of lastProcessedTime
-                for (let i = 0; i < relevantPoints.length; i++) {
-                    if ((relevantPoints[i].time - relevantPoints[0].time) / 1000 >= INTERVAL_SECONDS) {
-                        intervalStartIndex = i;
-                        break;
-                    }
-                }
+                // Try to find the start of a new, complete 10-second interval
+                let potentialIntervalStartIdx = 0;
+                while (potentialIntervalStartIdx < unprocessedPoints.length - 1) {
+                    const currentIntervalStartTime = unprocessedPoints[potentialIntervalStartIdx].time;
+                    const targetIntervalEndTime = currentIntervalStartTime + (INTERVAL_SECONDS * 1000);
 
-                if (intervalStartIndex === 0 && (relevantPoints[relevantPoints.length - 1].time - relevantPoints[0].time) / 1000 < INTERVAL_SECONDS) {
-                    // No complete interval formed yet
-                    return;
-                }
-
-                // If we have enough points for at least one full interval
-                while (true) {
-                    const currentIntervalStartPoint = relevantPoints[intervalStartIndex];
-                    const currentIntervalEndTime = currentIntervalStartPoint.time + (INTERVAL_SECONDS * 1000); // Target end time in ms
-
-                    // Find the last point that falls within this 10-second window
-                    let intervalEndIndex = -1;
-                    for (let i = intervalStartIndex; i < relevantPoints.length; i++) {
-                        if (relevantPoints[i].time <= currentIntervalEndTime) {
-                            intervalEndIndex = i;
-                        } else {
-                            break; // Points are sorted by time, so we can stop
+                    // Find the last point that falls within or just after the target 10-second window
+                    let intervalEndIdx = -1;
+                    for (let i = potentialIntervalStartIdx + 1; i < unprocessedPoints.length; i++) {
+                        if (unprocessedPoints[i].time >= targetIntervalEndTime) {
+                            intervalEndIdx = i;
+                            break;
                         }
                     }
 
-                    if (intervalEndIndex === -1 || intervalEndIndex === intervalStartIndex) {
-                        // Not enough points to form a meaningful interval, or only one point
+                    if (intervalEndIdx !== -1) {
+                        // We found enough points to form an interval
+                        const intervalPointsToProcess = unprocessedPoints.slice(potentialIntervalStartIdx, intervalEndIdx + 1);
+                        const actualDuration = (intervalPointsToProcess[intervalPointsToProcess.length - 1].time - intervalPointsToProcess[0].time) / 1000;
+
+                        // Only process if the actual duration is close enough to INTERVAL_SECONDS
+                        // and there's enough distance covered to be considered "moving"
+                        if (actualDuration >= INTERVAL_SECONDS * 0.5) { // At least half the target duration
+                            // Fetch elevation for these specific points in the interval
+                            const elevationCoords = intervalPointsToProcess.map(p => `latitude=${p.lat}&longitude=${p.lon}`).join('&');
+                            const elevationUrl = `${OPEN_METEO_ELEVATION_API_URL}?${elevationCoords}`;
+                            try {
+                                const elevationResponse = await fetchWithRetry(elevationUrl);
+                                if (elevationResponse && Array.isArray(elevationResponse.elevation) && elevationResponse.elevation.length === intervalPointsToProcess.length) {
+                                    intervalPointsToProcess.forEach((p, index) => {
+                                        p.alt = elevationResponse.elevation[index];
+                                    });
+                                } else {
+                                     const errMsg = elevationResponse && elevationResponse.reason ? elevationResponse.reason : 'Unknown error or invalid response structure.';
+                                     console.error(`Failed to fetch elevation for interval: ${errMsg}`);
+                                     outputDiv.textContent += `\nError fetching elevation for an interval. Skipping this interval. (${errMsg})\n`;
+                                     outputDiv.scrollTop = outputDiv.scrollHeight;
+                                     // If elevation fails, we can't calculate power for this interval.
+                                     // Move to the next potential start point.
+                                     potentialIntervalStartIdx = intervalEndIdx;
+                                     continue; // Continue to next iteration of while loop
+                                }
+                            } catch (error) {
+                                console.error(`Error fetching elevation for interval: ${error.message}`);
+                                outputDiv.textContent += `\nError fetching elevation for an interval: ${error.message}. Skipping this interval.\n`;
+                                outputDiv.scrollTop = outputDiv.scrollHeight;
+                                potentialIntervalStartIdx = intervalEndIdx;
+                                continue;
+                            }
+
+                            const result = await processInterval(intervalPointsToProcess, ambientWindData, params);
+                            if (result) {
+                                recordedData.push(result);
+                                let currentOutput = outputDiv.textContent.split('\n\n');
+                                currentOutput.pop(); // Remove last status message
+                                currentOutput.push(`--- Interval ${result.intervalStartMs / 1000}s to ${result.intervalEndMs / 1000}s (Duration: ${result.intervalDurationS.toFixed(1)}s) ---`);
+                                currentOutput.push(`Avg Ground Speed: ${result.avgGroundSpeedKmh.toFixed(2)} km/h`);
+                                currentOutput.push(`Apparent Wind Speed: ${result.apparentWindSpeedKmh.toFixed(2)} km/h`);
+                                currentOutput.push(`Elevation Change: ${result.deltaAltitudeM.toFixed(2)} m`);
+                                currentOutput.push(`Total Average Power (at Pedals): ${result.totalPowerAtPedalsW.toFixed(2)} W`);
+                                currentOutput.push(`(${result.windUsedMessage})`);
+                                outputDiv.textContent = currentOutput.join('\n\n');
+                                outputDiv.scrollTop = outputDiv.scrollHeight;
+                            }
+
+                            // Update lastProcessedTime to the end of the current interval
+                            lastProcessedTime = intervalPointsToProcess[intervalPointsToProcess.length - 1].time;
+
+                            // Remove processed points from liveDataPoints
+                            liveDataPoints = liveDataPoints.filter(p => p.time > lastProcessedTime);
+                            potentialIntervalStartIdx = 0; // Reset to check from the beginning of remaining unprocessed points
+                        } else {
+                            // Interval too short, move to the next point as a potential start
+                            potentialIntervalStartIdx++;
+                        }
+                    } else {
+                        // No more complete intervals can be formed with current data
                         break;
                     }
-
-                    const intervalPointsToProcess = relevantPoints.slice(intervalStartIndex, intervalEndIndex + 1);
-
-                    // Ensure the interval duration is actually close to INTERVAL_SECONDS
-                    const actualDuration = (intervalPointsToProcess[intervalPointsToProcess.length - 1].time - intervalPointsToProcess[0].time) / 1000;
-                    if (actualDuration < INTERVAL_SECONDS * 0.5) { // Require at least half the interval duration
-                        // Not enough time covered by these points, move to next potential start
-                        intervalStartIndex = intervalEndIndex; // Advance start to end of current small chunk
-                        continue;
-                    }
-
-
-                    // Fetch elevation for these specific points in the interval
-                    const elevationCoords = intervalPointsToProcess.map(p => `latitude=${p.lat}&longitude=${p.lon}`).join('&');
-                    const elevationUrl = `${OPEN_METEO_ELEVATION_API_URL}?${elevationCoords}`;
-                    try {
-                        const elevationResponse = await fetchWithRetry(elevationUrl);
-                        if (elevationResponse && Array.isArray(elevationResponse.elevation) && elevationResponse.elevation.length === intervalPointsToProcess.length) {
-                            intervalPointsToProcess.forEach((p, index) => {
-                                p.alt = elevationResponse.elevation[index];
-                            });
-                        } else {
-                             const errMsg = elevationResponse && elevationResponse.reason ? elevationResponse.reason : 'Unknown error or invalid response structure.';
-                             console.error(`Failed to fetch elevation for interval: ${errMsg}`);
-                             // If elevation fails, we can't calculate power for this interval.
-                             // Decide: skip this interval or use a placeholder altitude? For now, skip.
-                             intervalStartIndex = intervalEndIndex; // Move past this problematic interval
-                             continue;
-                        }
-                    } catch (error) {
-                        console.error(`Error fetching elevation for interval: ${error.message}`);
-                        intervalStartIndex = intervalEndIndex;
-                        continue;
-                    }
-
-                    const result = await processInterval(intervalPointsToProcess, ambientWindData, params);
-                    if (result) {
-                        recordedData.push(result);
-                        let currentOutput = outputDiv.textContent.split('\n\n'); // Keep previous output
-                        currentOutput.pop(); // Remove last status message
-                        currentOutput.push(`--- Interval ${result.intervalStartMs / 1000}s to ${result.intervalEndMs / 1000}s (Duration: ${result.intervalDurationS.toFixed(1)}s) ---`);
-                        currentOutput.push(`Avg Ground Speed: ${result.avgGroundSpeedKmh.toFixed(2)} km/h`);
-                        currentOutput.push(`Apparent Wind Speed: ${result.apparentWindSpeedKmh.toFixed(2)} km/h`);
-                        currentOutput.push(`Elevation Change: ${result.deltaAltitudeM.toFixed(2)} m`);
-                        currentOutput.push(`Total Average Power (at Pedals): ${result.totalPowerAtPedalsW.toFixed(2)} W`);
-                        currentOutput.push(`(${result.windUsedMessage})`);
-                        currentOutput.push(''); // Blank line
-                        outputDiv.textContent = currentOutput.join('\n\n');
-                        outputDiv.scrollTop = outputDiv.scrollHeight; // Scroll to bottom
-                    }
-
-                    // Update lastProcessedTime to the end of the current interval
-                    lastProcessedTime = intervalPointsToProcess[intervalPointsToProcess.length - 1].time;
-
-                    // Remove processed points from liveDataPoints to prevent reprocessing
-                    liveDataPoints = liveDataPoints.filter(p => p.time > lastProcessedTime);
-                    intervalStartIndex = 0; // Reset for next iteration of while loop on remaining relevantPoints
                 }
-            }, PROCESSING_INTERVAL_MS); // Check for new intervals every X milliseconds
+            }, PROCESSING_INTERVAL_MS);
         }
 
 
         function stopRecording() {
-            if (!isRecording) return; // Already stopped
+            if (!isRecording) return;
             isRecording = false;
 
             if (watchId !== null) {
@@ -576,7 +592,7 @@
 
             startButton.disabled = false;
             stopButton.disabled = true;
-            loadingSpinner.classList.add('hidden'); // Ensure spinner is hidden
+            loadingSpinner.classList.add('hidden');
 
             outputDiv.textContent += '\nRecording stopped. Generating CSV...';
             downloadCSV();
@@ -602,7 +618,7 @@
             ];
 
             const csvRows = [];
-            csvRows.push(headers.join(',')); // Add headers
+            csvRows.push(headers.join(','));
 
             recordedData.forEach(row => {
                 const values = [
