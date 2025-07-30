@@ -131,6 +131,7 @@
             border: 1px solid #e5e7eb;
             margin-top: 1.5rem;
             transition: all 0.3s ease-in-out;
+            max-height: 500px; /* Arbitrary max-height for transition */
             overflow: hidden; /* Hide overflow when collapsed */
         }
         .settings-section.hidden {
@@ -163,7 +164,7 @@
                 <span class="label">GPS Coordinates</span>
                 <span class="sub-value" id="displayGPS">Lat: N/A, Lon: N/A</span>
             </div>
-            <div class="time-display" id="displayTime">--:--:--</div>
+            <div class="time-display" id="displayTime">00:00:00</div>
         </div>
 
         <div class="button-group">
@@ -231,10 +232,10 @@
     <script>
         // Constants
         const G = 9.8067; // Acceleration due to gravity (m/s^2)
-        const INTERVAL_SECONDS = 15; // Changed to 15 seconds for API rate limit mitigation
+        const INTERVAL_SECONDS = 60; // Changed to 60 seconds (1 minute) for API rate limit mitigation
         const OPEN_METEO_ELEVATION_API_URL = 'https://api.open-meteo.com/v1/elevation';
         const OPEN_WEATHER_MAP_CURRENT_WEATHER_API_URL = 'https://api.openweathermap.org/data/2.5/weather';
-        const PROCESSING_INTERVAL_MS = 2000; // How often to check for new 15-second intervals (e.g., every 2 seconds)
+        const PROCESSING_INTERVAL_MS = 2000; // How often to check for new 60-second intervals (e.g., every 2 seconds)
         const MIN_SPEED_THRESHOLD_MPS = 0.5; // Minimum speed (m/s) to consider as moving and calculate power
 
         let recordedData = []; // Stores calculated power metrics for each interval
