@@ -66,6 +66,11 @@
             max-height: 400px;
             overflow-y: auto;
         }
+        .status-message {
+            margin-top: 1rem;
+            font-size: 0.875rem;
+            color: #4b5563;
+        }
         .warning {
             color: #dc2626;
             font-size: 0.875rem;
@@ -140,6 +145,9 @@
         </div>
 
         <div class="output-box" id="output">
+            Live interval data will appear here.
+        </div>
+        <div class="status-message" id="statusMessage">
             Click "Start Recording" to begin. Please allow location access.
         </div>
     </div>
@@ -164,7 +172,8 @@
         const startButton = document.getElementById('startButton');
         const stopButton = document.getElementById('stopButton');
         const loadingSpinner = document.getElementById('loadingSpinner');
-        const outputDiv = document.getElementById('output');
+        const outputDiv = document.getElementById('output'); // Main output for interval data
+        const statusMessageDiv = document.getElementById('statusMessage'); // Separate div for status messages
 
         // Function to convert degrees to radians
         function toRadians(deg) {
@@ -340,9 +349,9 @@
                 intervalStartMs: intervalStartTime,
                 intervalEndMs: intervalEndTime,
                 intervalDurationS: actualIntervalDuration,
-                startLat: intervalPoints[0].lat, // Add start lat for display and CSV
-                startLon: intervalPoints[0].lon, // Add start lon for display and CSV
-                startAlt: intervalPoints[0].alt, // Add start alt for display and CSV
+                startLat: intervalPoints[0].lat,
+                startLon: intervalPoints[0].lon,
+                startAlt: intervalPoints[0].alt,
                 avgGroundSpeedMps: avgGroundSpeed,
                 avgGroundSpeedKmh: avgGroundSpeed * 3.6,
                 avgBearingDeg: avgBearing,
@@ -372,8 +381,7 @@
                 time: position.timestamp // Milliseconds since epoch
             };
             liveDataPoints.push(newPoint);
-            outputDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}. Waiting for enough movement/time for an interval.\n`;
-            outputDiv.scrollTop = outputDiv.scrollHeight;
+            statusMessageDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}. Waiting for enough movement/time for an interval.`;
         }
 
         // GPS error callback
@@ -390,7 +398,7 @@
                     errorMessage = "The request to get user location timed out.";
                     break;
             }
-            outputDiv.textContent = `GPS Error: ${errorMessage}\nRecording stopped.`;
+            statusMessageDiv.textContent = `GPS Error: ${errorMessage}`;
             stopRecording();
         }
 
@@ -400,7 +408,8 @@
             recordedData = [];
             liveDataPoints = [];
             lastProcessedTime = 0;
-            outputDiv.textContent = 'Starting recording...\n\n';
+            outputDiv.textContent = 'Live interval data will appear here.'; // Clear previous output
+            statusMessageDiv.textContent = 'Starting recording...\n\n';
             startButton.disabled = true;
             stopButton.disabled = false;
             loadingSpinner.classList.remove('hidden');
@@ -417,19 +426,19 @@
             const params = { bodyWeight, bikeWeight, cda, cr, airDensity, drivetrainEfficiency };
 
             if (isNaN(bodyWeight) || isNaN(bikeWeight) || isNaN(cda) || isNaN(cr) || isNaN(airDensity) || isNaN(drivetrainEfficiency)) {
-                outputDiv.textContent = 'Please enter valid numbers for all input fields.';
+                statusMessageDiv.textContent = 'Please enter valid numbers for all input fields.';
                 stopRecording();
                 return;
             }
             if (drivetrainEfficiency <= 0 || drivetrainEfficiency > 1) {
-                outputDiv.textContent = 'Drivetrain Efficiency must be between 1 and 100%.';
+                statusMessageDiv.textContent = 'Drivetrain Efficiency must be between 1 and 100%.';
                 stopRecording();
                 return;
             }
 
             // Start GPS tracking
             if (navigator.geolocation) {
-                outputDiv.textContent += 'Requesting GPS location. Please allow access...\n';
+                statusMessageDiv.textContent = 'Requesting GPS location. Please allow access...\n';
                 watchId = navigator.geolocation.watchPosition(
                     gpsSuccess,
                     gpsError,
@@ -443,25 +452,25 @@
                         clearInterval(initialGpsCheckInterval);
                         await fetchInitialWindData(params, openWeatherApiKey);
                         loadingSpinner.classList.add('hidden');
-                        outputDiv.textContent = 'Recording live GPS data. Processing intervals...\n\n';
+                        statusMessageDiv.textContent = 'Recording live GPS data. Processing intervals...\n';
                         startProcessingIntervals(params);
                     } else if (initialGpsAttemptCount >= maxInitialGpsAttempts) {
                         clearInterval(initialGpsCheckInterval);
-                        outputDiv.textContent = 'Could not get initial GPS location after several attempts. Please ensure GPS is enabled and permissions are granted.';
+                        statusMessageDiv.textContent = 'Could not get initial GPS location after several attempts. Please ensure GPS is enabled and permissions are granted.';
                         stopRecording();
                     }
                     initialGpsAttemptCount++;
                 }, 500);
 
             } else {
-                outputDiv.textContent = 'Geolocation is not supported by your browser.';
+                statusMessageDiv.textContent = 'Geolocation is not supported by your browser.';
                 stopRecording();
             }
         }
 
         async function fetchInitialWindData(params, openWeatherApiKey) {
             if (openWeatherApiKey && liveDataPoints.length > 0) {
-                outputDiv.textContent += 'Attempting to fetch ambient wind data from OpenWeatherMap...\n';
+                statusMessageDiv.textContent = 'Attempting to fetch ambient wind data from OpenWeatherMap...\n';
                 const firstPoint = liveDataPoints[0];
                 const weatherUrl = `${OPEN_WEATHER_MAP_CURRENT_WEATHER_API_URL}?lat=${firstPoint.lat}&lon=${firstPoint.lon}&appid=${openWeatherApiKey}&units=metric`;
                 try {
@@ -471,17 +480,17 @@
                         ambientWindData.deg = weatherResponse.wind.deg;
                         ambientWindData.isUsed = true;
                         ambientWindData.windUsedMessage = `Ambient Wind: ${ambientWindData.speed.toFixed(1)} m/s (${(ambientWindData.speed * 3.6).toFixed(1)} km/h) from ${ambientWindData.deg.toFixed(1)}° (Data used in calculation)`;
-                        outputDiv.textContent += `${ambientWindData.windUsedMessage}\n\n`;
+                        statusMessageDiv.textContent = `${ambientWindData.windUsedMessage}\n`;
                     } else {
                         throw new Error('Invalid wind data response.');
                     }
                 } catch (windError) {
-                    outputDiv.textContent += `Could not fetch wind data from OpenWeatherMap (${windError.message}). Proceeding without ambient wind data.\n\n`;
+                    statusMessageDiv.textContent = `Could not fetch wind data from OpenWeatherMap (${windError.message}). Proceeding without ambient wind data.\n`;
                     ambientWindData.isUsed = false;
                     ambientWindData.windUsedMessage = "No ambient wind data (API key provided but fetch failed).";
                 }
             } else {
-                outputDiv.textContent += 'OpenWeatherMap API Key not provided or no initial GPS data. Proceeding without ambient wind data.\n\n';
+                statusMessageDiv.textContent = 'OpenWeatherMap API Key not provided or no initial GPS data. Proceeding without ambient wind data.\n';
                 ambientWindData.isUsed = false;
                 ambientWindData.windUsedMessage = "No ambient wind data (API key not provided).";
             }
@@ -492,8 +501,7 @@
                 const unprocessedPoints = liveDataPoints.filter(p => p.time > lastProcessedTime);
 
                 if (unprocessedPoints.length < 2) {
-                    outputDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}. Waiting for more data or movement for next interval.\n`;
-                    outputDiv.scrollTop = outputDiv.scrollHeight;
+                    statusMessageDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}. Waiting for more data or movement for next interval.`;
                     return;
                 }
 
@@ -515,6 +523,7 @@
                         const actualDuration = (intervalPointsToProcess[intervalPointsToProcess.length - 1].time - intervalPointsToProcess[0].time) / 1000;
 
                         if (actualDuration >= INTERVAL_SECONDS * 0.5) {
+                            // --- Batch Elevation Fetch for this interval's points ---
                             const elevationCoords = intervalPointsToProcess.map(p => `latitude=${p.lat}&longitude=${p.lon}`).join('&');
                             const elevationUrl = `${OPEN_METEO_ELEVATION_API_URL}?${elevationCoords}`;
                             try {
@@ -526,15 +535,13 @@
                                 } else {
                                      const errMsg = elevationResponse && elevationResponse.reason ? elevationResponse.reason : 'Unknown error or invalid response structure.';
                                      console.error(`Failed to fetch elevation for interval: ${errMsg}`);
-                                     outputDiv.textContent += `\nError fetching elevation for an interval. Skipping this interval. (${errMsg})\n`;
-                                     outputDiv.scrollTop = outputDiv.scrollHeight;
+                                     statusMessageDiv.textContent = `Error fetching elevation for an interval. Skipping. (${errMsg})`;
                                      potentialIntervalStartIdx = intervalEndIdx;
                                      continue;
                                 }
                             } catch (error) {
                                 console.error(`Error fetching elevation for interval: ${error.message}`);
-                                outputDiv.textContent += `\nError fetching elevation for an interval: ${error.message}. Skipping this interval.\n`;
-                                outputDiv.scrollTop = outputDiv.scrollHeight;
+                                statusMessageDiv.textContent = `Error fetching elevation for an interval: ${error.message}. Skipping.`;
                                 potentialIntervalStartIdx = intervalEndIdx;
                                 continue;
                             }
@@ -544,7 +551,7 @@
                                 recordedData.push(result);
                                 // --- CONCISE OUTPUT FOR DISPLAY ---
                                 const displayMessage = `
-Interval Start: ${new Date(result.intervalStartMs).toLocaleTimeString()}
+Interval Start Time: ${new Date(result.intervalStartMs).toLocaleTimeString()}
 GPS: ${result.startLat.toFixed(4)}, ${result.startLon.toFixed(4)}
 Elevation: ${result.startAlt.toFixed(1)} m
 Avg Speed: ${result.avgGroundSpeedKmh.toFixed(2)} km/h
@@ -566,6 +573,7 @@ Avg Power: ${result.totalPowerAtPedalsW.toFixed(2)} W
                         break;
                     }
                 }
+                statusMessageDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}. Waiting for more data or movement for next interval.`;
             }, PROCESSING_INTERVAL_MS);
         }
 
@@ -586,20 +594,20 @@ Avg Power: ${result.totalPowerAtPedalsW.toFixed(2)} W
             stopButton.disabled = true;
             loadingSpinner.classList.add('hidden');
 
-            outputDiv.textContent += '\nRecording stopped. Generating CSV...';
+            statusMessageDiv.textContent = 'Recording stopped. Generating CSV...';
             downloadCSV();
-            outputDiv.textContent += '\nCSV downloaded successfully!';
+            statusMessageDiv.textContent = 'CSV downloaded successfully!';
         }
 
         function downloadCSV() {
             if (recordedData.length === 0) {
-                outputDiv.textContent += '\nNo data recorded to download.';
+                statusMessageDiv.textContent = 'No data recorded to download.';
                 return;
             }
 
             const headers = [
                 "Interval Start (ms)", "Interval End (ms)", "Interval Duration (s)",
-                "Start Lat", "Start Lon", "Start Alt (m)", // New headers for start point
+                "Start Lat", "Start Lon", "Start Alt (m)",
                 "Avg Ground Speed (m/s)", "Avg Ground Speed (km/h)",
                 "Avg Bearing (deg)",
                 "Ambient Wind Speed (m/s)", "Ambient Wind Speed (km/h)", "Ambient Wind Direction (deg)",
@@ -616,7 +624,7 @@ Avg Power: ${result.totalPowerAtPedalsW.toFixed(2)} W
             recordedData.forEach(row => {
                 const values = [
                     row.intervalStartMs, row.intervalEndMs, row.intervalDurationS.toFixed(1),
-                    row.startLat.toFixed(6), row.startLon.toFixed(6), row.startAlt.toFixed(1), // Add to CSV
+                    row.startLat.toFixed(6), row.startLon.toFixed(6), row.startAlt.toFixed(1),
                     row.avgGroundSpeedMps.toFixed(2), row.avgGroundSpeedKmh.toFixed(2),
                     row.avgBearingDeg.toFixed(1),
                     row.ambientWindSpeedMps.toFixed(2), row.ambientWindSpeedKmh.toFixed(2), row.ambientWindDirectionDeg.toFixed(1),
