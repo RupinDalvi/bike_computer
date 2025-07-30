@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cycling Power Recorder & Calculator (Live GPS)</title>
+    <title>Cycling Power Recorder (Live GPS)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -24,6 +24,44 @@
             width: 100%;
             max-width: 700px;
         }
+
+        /* Bike Computer Display Styling */
+        .bike-computer-display {
+            background-color: #1a202c; /* Dark background for display */
+            color: #4ade80; /* Greenish text for a retro feel */
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            font-family: 'monospace', sans-serif;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+            border: 2px solid #2d3748;
+        }
+        .bike-computer-display .metric {
+            margin-bottom: 0.75rem;
+        }
+        .bike-computer-display .label {
+            font-size: 0.8rem;
+            color: #a0aec0; /* Lighter grey for labels */
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+        .bike-computer-display .value {
+            font-size: 2.25rem; /* Large for main metrics */
+            font-weight: bold;
+            line-height: 1;
+        }
+        .bike-computer-display .sub-value {
+            font-size: 1.25rem; /* Smaller for GPS coords */
+            color: #cbd5e0;
+        }
+        .bike-computer-display .time-display {
+            font-size: 1rem;
+            color: #a0aec0;
+            margin-top: 1rem;
+        }
+
+        /* Input Fields */
         input[type="number"],
         input[type="text"] {
             padding: 0.75rem;
@@ -34,6 +72,8 @@
             margin-top: 0.25rem;
             margin-bottom: 1rem;
         }
+
+        /* Buttons */
         button {
             background-color: #3b82f6;
             color: white;
@@ -46,7 +86,8 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            margin-right: 0.5rem; /* Space between buttons */
+            margin-right: 0.5rem;
+            margin-bottom: 1rem; /* Space below buttons */
         }
         button:hover {
             background-color: #2563eb;
@@ -55,21 +96,21 @@
             background-color: #9ca3af;
             cursor: not-allowed;
         }
-        .output-box {
-            background-color: #e0f2fe;
-            padding: 1rem;
-            border-radius: 0.75rem;
-            margin-top: 1.5rem;
-            white-space: pre-wrap;
-            font-family: monospace;
-            font-size: 0.9rem;
-            max-height: 400px;
-            overflow-y: auto;
+        .button-group {
+            display: flex;
+            flex-wrap: wrap; /* Allow buttons to wrap on smaller screens */
+            gap: 0.5rem;
+            justify-content: center; /* Center buttons */
+            margin-bottom: 1rem;
         }
+
+        /* Status Message */
         .status-message {
             margin-top: 1rem;
             font-size: 0.875rem;
             color: #4b5563;
+            text-align: center;
+            min-height: 2rem; /* Give it some space even when empty */
         }
         .warning {
             color: #dc2626;
@@ -81,59 +122,48 @@
             font-size: 0.875rem;
             margin-top: 0.5rem;
         }
-        .button-group {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
+
+        /* Settings Section */
+        .settings-section {
+            background-color: #f9fafb;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            border: 1px solid #e5e7eb;
+            margin-top: 1.5rem;
+            transition: all 0.3s ease-in-out;
+            overflow: hidden; /* Hide overflow when collapsed */
+        }
+        .settings-section.hidden {
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            margin-top: 0;
+            opacity: 0;
+            pointer-events: none; /* Disable interaction when hidden */
         }
     </style>
 </head>
 <body class="bg-gray-100">
     <div class="container">
-        <h1 class="text-3xl font-bold text-center mb-6 text-gray-800">Cycling Power Recorder (Live GPS)</h1>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-                <label for="bodyWeight" class="block text-gray-700 text-sm font-medium">Body Weight (kg):</label>
-                <input type="number" id="bodyWeight" value="75" min="1">
+        <!-- Bike Computer Display Area -->
+        <div class="bike-computer-display" id="bikeComputerDisplay">
+            <div class="metric">
+                <span class="label">Speed (km/h)</span>
+                <span class="value" id="displaySpeed">0.00</span>
             </div>
-            <div>
-                <label for="bikeWeight" class="block text-gray-700 text-sm font-medium">Bike Weight (kg):</label>
-                <input type="number" id="bikeWeight" value="9" min="1">
+            <div class="metric">
+                <span class="label">Power (Watts)</span>
+                <span class="value" id="displayPower">0.00</span>
             </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-                <label for="cda" class="block text-gray-700 text-sm font-medium">CdA (m² - Aerodynamic Drag Coefficient * Frontal Area):</label>
-                <input type="number" id="cda" value="0.3" step="0.01" min="0.1">
-                <p class="text-gray-500 text-xs mt-1">Typical values: 0.25 (aero) - 0.45 (upright).</p>
+            <div class="metric">
+                <span class="label">Elevation (m)</span>
+                <span class="value" id="displayElevation">0.0</span>
             </div>
-            <div>
-                <label for="cr" class="block text-gray-700 text-sm font-medium">Cr (Rolling Resistance Coefficient):</label>
-                <input type="number" id="cr" value="0.004" step="0.0001" min="0.001">
-                <p class="text-gray-500 text-xs mt-1">Typical values: 0.003 (smooth) - 0.005 (rough).</p>
+            <div class="metric">
+                <span class="label">GPS Coordinates</span>
+                <span class="sub-value" id="displayGPS">Lat: N/A, Lon: N/A</span>
             </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-                <label for="airDensity" class="block text-gray-700 text-sm font-medium">Air Density (kg/m³):</label>
-                <input type="number" id="airDensity" value="1.225" step="0.001" min="0.5">
-                <p class="text-gray-500 text-xs mt-1">Standard sea-level: 1.225. Lower at higher altitudes.</p>
-            </div>
-            <div>
-                <label for="drivetrainEfficiency" class="block text-gray-700 text-sm font-medium">Drivetrain Efficiency (%):</label>
-                <input type="number" id="drivetrainEfficiency" value="97" step="1" min="70" max="100">
-                <p class="text-gray-500 text-xs mt-1">Percentage of power reaching the wheel (e.g., 97 for 97%).</p>
-            </div>
-        </div>
-
-        <div class="mb-4">
-            <label for="openWeatherApiKey" class="block text-gray-700 text-sm font-medium">OpenWeatherMap API Key (Optional for Wind Data):</label>
-            <input type="text" id="openWeatherApiKey" placeholder="Leave empty to exclude wind data">
-            <p class="text-gray-500 text-xs mt-1">If provided, fetches ambient wind data. Get one from <a href="https://openweathermap.org/api" target="_blank" class="text-blue-600 hover:underline">openweathermap.org/api</a> (free tier available, but requires key).</p>
-            <p class="warning">**NOTE:** API keys can take up to 2 hours to activate after registration.</p>
+            <div class="time-display" id="displayTime">--:--:--</div>
         </div>
 
         <div class="button-group">
@@ -142,23 +172,69 @@
                 <span id="loadingSpinner" class="loading-spinner hidden"></span>
             </button>
             <button id="stopButton" onclick="stopRecording()" disabled>Stop Recording</button>
+            <button id="settingsButton" onclick="toggleSettings()">Settings</button>
         </div>
 
-        <div class="output-box" id="output">
-            Live interval data will appear here.
-        </div>
         <div class="status-message" id="statusMessage">
             Click "Start Recording" to begin. Please allow location access.
+        </div>
+
+        <!-- Collapsible Settings Section -->
+        <div class="settings-section hidden" id="settingsSection">
+            <h2 class="text-xl font-bold mb-4 text-gray-800">Calculation Parameters</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label for="bodyWeight" class="block text-gray-700 text-sm font-medium">Body Weight (kg):</label>
+                    <input type="number" id="bodyWeight" value="75" min="1">
+                </div>
+                <div>
+                    <label for="bikeWeight" class="block text-gray-700 text-sm font-medium">Bike Weight (kg):</label>
+                    <input type="number" id="bikeWeight" value="9" min="1">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label for="cda" class="block text-gray-700 text-sm font-medium">CdA (m² - Aerodynamic Drag Coefficient * Frontal Area):</label>
+                    <input type="number" id="cda" value="0.3" step="0.01" min="0.1">
+                    <p class="text-gray-500 text-xs mt-1">Typical values: 0.25 (aero) - 0.45 (upright).</p>
+                </div>
+                <div>
+                    <label for="cr" class="block text-gray-700 text-sm font-medium">Cr (Rolling Resistance Coefficient):</label>
+                    <input type="number" id="cr" value="0.004" step="0.0001" min="0.001">
+                    <p class="text-gray-500 text-xs mt-1">Typical values: 0.003 (smooth) - 0.005 (rough).</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label for="airDensity" class="block text-gray-700 text-sm font-medium">Air Density (kg/m³):</label>
+                    <input type="number" id="airDensity" value="1.225" step="0.001" min="0.5">
+                    <p class="text-gray-500 text-xs mt-1">Standard sea-level: 1.225. Lower at higher altitudes.</p>
+                </div>
+                <div>
+                    <label for="drivetrainEfficiency" class="block text-gray-700 text-sm font-medium">Drivetrain Efficiency (%):</label>
+                    <input type="number" id="drivetrainEfficiency" value="97" step="1" min="70" max="100">
+                    <p class="text-gray-500 text-xs mt-1">Percentage of power reaching the wheel (e.g., 97 for 97%).</p>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label for="openWeatherApiKey" class="block text-gray-700 text-sm font-medium">OpenWeatherMap API Key (Optional for Wind Data):</label>
+                <input type="text" id="openWeatherApiKey" placeholder="Leave empty to exclude wind data">
+                <p class="text-gray-500 text-xs mt-1">If provided, fetches ambient wind data. Get one from <a href="https://openweathermap.org/api" target="_blank" class="text-blue-600 hover:underline">openweathermap.org/api</a> (free tier available, but requires key).</p>
+                <p class="warning">**NOTE:** API keys can take up to 2 hours to activate after registration.</p>
+            </div>
         </div>
     </div>
 
     <script>
         // Constants
         const G = 9.8067; // Acceleration due to gravity (m/s^2)
-        const INTERVAL_SECONDS = 10; // Calculation interval for power
+        const INTERVAL_SECONDS = 15; // Changed to 15 seconds for API rate limit mitigation
         const OPEN_METEO_ELEVATION_API_URL = 'https://api.open-meteo.com/v1/elevation';
         const OPEN_WEATHER_MAP_CURRENT_WEATHER_API_URL = 'https://api.openweathermap.org/data/2.5/weather';
-        const PROCESSING_INTERVAL_MS = 2000; // How often to check for new 10-second intervals (e.g., every 2 seconds)
+        const PROCESSING_INTERVAL_MS = 2000; // How often to check for new 15-second intervals (e.g., every 2 seconds)
         const MIN_SPEED_THRESHOLD_MPS = 0.5; // Minimum speed (m/s) to consider as moving and calculate power
 
         let recordedData = []; // Stores calculated power metrics for each interval
@@ -167,13 +243,31 @@
         let processingIntervalId = null; // To store the setInterval ID for processing
         let liveDataPoints = []; // Stores incoming GPS data points {lat, lon, time (ms)}
         let lastProcessedTime = 0; // Timestamp (ms) of the last point included in a processed interval
+        let startTime = null; // To track the start time of the recording for elapsed time display
 
         // DOM elements
         const startButton = document.getElementById('startButton');
         const stopButton = document.getElementById('stopButton');
+        const settingsButton = document.getElementById('settingsButton');
         const loadingSpinner = document.getElementById('loadingSpinner');
-        const outputDiv = document.getElementById('output'); // Main output for interval data
-        const statusMessageDiv = document.getElementById('statusMessage'); // Separate div for status messages
+        const bikeComputerDisplay = document.getElementById('bikeComputerDisplay');
+        const displaySpeed = document.getElementById('displaySpeed');
+        const displayPower = document.getElementById('displayPower');
+        const displayElevation = document.getElementById('displayElevation');
+        const displayGPS = document.getElementById('displayGPS');
+        const displayTime = document.getElementById('displayTime');
+        const statusMessageDiv = document.getElementById('statusMessage');
+        const settingsSection = document.getElementById('settingsSection');
+
+        // Function to toggle settings section visibility
+        function toggleSettings() {
+            settingsSection.classList.toggle('hidden');
+            if (!settingsSection.classList.contains('hidden')) {
+                settingsButton.textContent = 'Hide Settings';
+            } else {
+                settingsButton.textContent = 'Settings';
+            }
+        }
 
         // Function to convert degrees to radians
         function toRadians(deg) {
@@ -235,7 +329,7 @@
             }
         }
 
-        // Function to process a single 10-second interval
+        // Function to process a single interval
         async function processInterval(intervalPoints, ambientWindData, params) {
             const { bodyWeight, bikeWeight, cda, cr, airDensity, drivetrainEfficiency } = params;
             const totalMass = bodyWeight + bikeWeight;
@@ -270,7 +364,7 @@
                     ambientWindSpeedMps: ambientWindData.speed,
                     ambientWindSpeedKmh: ambientWindData.speed * 3.6,
                     ambientWindDirectionDeg: ambientWindData.deg,
-                    apparentWindSpeedMps: ambientWindData.isUsed ? ambientWindData.speed : 0, // If stationary, apparent wind is just ambient if used, else 0
+                    apparentWindSpeedMps: ambientWindData.isUsed ? ambientWindData.speed : 0,
                     apparentWindSpeedKmh: ambientWindData.isUsed ? ambientWindData.speed * 3.6 : 0,
                     deltaAltitudeM: 0, // Assume no elevation change if stationary
                     powerAeroW: 0,
@@ -382,6 +476,15 @@
             };
             liveDataPoints.push(newPoint);
             statusMessageDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}. Waiting for enough movement/time for an interval.`;
+            
+            // Update live time display
+            if (startTime) {
+                const elapsedSeconds = Math.floor((newPoint.time - startTime) / 1000);
+                const hours = Math.floor(elapsedSeconds / 3600);
+                const minutes = Math.floor((elapsedSeconds % 3600) / 60);
+                const seconds = elapsedSeconds % 60;
+                displayTime.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            }
         }
 
         // GPS error callback
@@ -408,7 +511,15 @@
             recordedData = [];
             liveDataPoints = [];
             lastProcessedTime = 0;
-            outputDiv.textContent = 'Live interval data will appear here.'; // Clear previous output
+            startTime = Date.now(); // Set recording start time
+            
+            // Reset bike computer display
+            displaySpeed.textContent = '0.00';
+            displayPower.textContent = '0.00';
+            displayElevation.textContent = '0.0';
+            displayGPS.textContent = 'Lat: N/A, Lon: N/A';
+            displayTime.textContent = '00:00:00';
+
             statusMessageDiv.textContent = 'Starting recording...\n\n';
             startButton.disabled = true;
             stopButton.disabled = false;
@@ -522,10 +633,10 @@
                         const intervalPointsToProcess = unprocessedPoints.slice(potentialIntervalStartIdx, intervalEndIdx + 1);
                         const actualDuration = (intervalPointsToProcess[intervalPointsToProcess.length - 1].time - intervalPointsToProcess[0].time) / 1000;
 
-                        if (actualDuration >= INTERVAL_SECONDS * 0.5) {
+                        if (actualDuration >= INTERVAL_SECONDS * 0.5) { // Ensure sufficient duration for a meaningful interval
                             // --- Batch Elevation Fetch for this interval's points ---
-                            const elevationCoords = intervalPointsToProcess.map(p => `latitude=${p.lat}&longitude=${p.lon}`).join('&');
-                            const elevationUrl = `${OPEN_METEO_ELEVATION_API_URL}?${elevationCoords}`;
+                            const elevationParams = intervalPointsToProcess.map(p => `latitude=${p.lat}&longitude=${p.lon}`).join('&');
+                            const elevationUrl = `${OPEN_METEO_ELEVATION_API_URL}?${elevationParams}`;
                             try {
                                 const elevationResponse = await fetchWithRetry(elevationUrl);
                                 if (elevationResponse && Array.isArray(elevationResponse.elevation) && elevationResponse.elevation.length === intervalPointsToProcess.length) {
@@ -549,28 +660,22 @@
                             const result = await processInterval(intervalPointsToProcess, ambientWindData, params);
                             if (result) {
                                 recordedData.push(result);
-                                // --- CONCISE OUTPUT FOR DISPLAY ---
-                                const displayMessage = `
-Interval Start Time: ${new Date(result.intervalStartMs).toLocaleTimeString()}
-GPS: ${result.startLat.toFixed(4)}, ${result.startLon.toFixed(4)}
-Elevation: ${result.startAlt.toFixed(1)} m
-Avg Speed: ${result.avgGroundSpeedKmh.toFixed(2)} km/h
-Avg Power: ${result.totalPowerAtPedalsW.toFixed(2)} W
-(${result.windUsedMessage})
-------------------------------
-`;
-                                outputDiv.textContent = displayMessage; // Overwrite with new status
-                                outputDiv.scrollTop = outputDiv.scrollHeight;
+                                // --- UPDATE BIKE COMPUTER DISPLAY ---
+                                displaySpeed.textContent = result.avgGroundSpeedKmh.toFixed(2);
+                                displayPower.textContent = result.totalPowerAtPedalsW.toFixed(2);
+                                displayElevation.textContent = result.startAlt.toFixed(1);
+                                displayGPS.textContent = `Lat: ${result.startLat.toFixed(4)}, Lon: ${result.startLon.toFixed(4)}`;
+                                // Time display is updated by gpsSuccess, which runs more frequently
                             }
 
                             lastProcessedTime = intervalPointsToProcess[intervalPointsToProcess.length - 1].time;
                             liveDataPoints = liveDataPoints.filter(p => p.time > lastProcessedTime);
-                            potentialIntervalStartIdx = 0;
+                            potentialIntervalStartIdx = 0; // Reset to check from the beginning of remaining unprocessed points
                         } else {
                             potentialIntervalStartIdx++;
                         }
                     } else {
-                        break;
+                        break; // No more complete intervals can be formed with current data
                     }
                 }
                 statusMessageDiv.textContent = `Recording... GPS points collected: ${liveDataPoints.length}. Waiting for more data or movement for next interval.`;
